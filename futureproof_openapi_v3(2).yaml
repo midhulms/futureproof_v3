@@ -1,0 +1,227 @@
+# FutureProof v3 spec. Same server and same bearerAuth as v2, so the
+# Authentication tab in Retrieval Agent Manager does NOT change.
+#
+# Lines starting with "# CONFIRM" must be checked by Mariangela against the
+# SAS job's macro variable names before go-live. Only w0, wd_amount, income
+# and eq_w are confirmed from earlier messages. Comments are never sent to
+# SAS or read by the agent.
+openapi: 3.0.3
+info:
+  title: FutureProof Retirement Simulator
+  version: 3.0.0
+  description: >
+    Runs the FutureProof Monte Carlo retirement simulation (SAS Job Execution).
+    Simulates 100 possible futures for the user and reports how often the
+    savings last, how the savings evolve (typical path and shaded band), the
+    earliest retirement age that reaches 90 percent, and which single change
+    helps the most. All money amounts are in today's dollars.
+servers:
+  - url: https://viya-3tzzrqm1rj.engage.sas.com
+paths:
+  /SASJobExecution/:
+    get:
+      operationId: run_retirement_simulation
+      summary: Run the FutureProof Monte Carlo retirement simulation
+      description: >
+        Use this tool whenever the user asks whether their retirement savings
+        will last, how likely they are to run out of money, what happens if
+        they spend more or less, retire earlier or later, save more, or hold
+        more or fewer stocks. Never estimate a probability yourself: always
+        call this tool and report only the numbers it returns. Ask the user
+        for any missing required input before calling, one question at a time.
+        Convert monthly amounts to yearly amounts (multiply by 12) and confirm
+        the conversion with the user. Express the stock share as a fraction
+        (60 percent is 0.6). To compare scenarios, call the tool once per
+        scenario and change only one input at a time.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: _program
+          in: query
+          required: true
+          description: Fixed SAS job path. Do not change.
+          schema:
+            type: string
+            enum:
+              - /Public/Mariangela/FPMC_agenticAI_job
+            default: /Public/Mariangela/FPMC_agenticAI_job
+        - name: _output_type
+          in: query
+          required: true
+          description: Fixed output format. Do not change.
+          schema:
+            type: string
+            enum: [json]
+            default: json
+        - name: w0
+          in: query
+          required: true
+          description: Starting savings (portfolio value) in today's dollars.
+          schema:
+            type: number
+            minimum: 0
+            maximum: 50000000
+            example: 115600
+        - name: wd_amount
+          in: query
+          required: true
+          description: >
+            Yearly spending taken from savings in retirement, in today's
+            dollars (monthly spending times 12).
+          schema:
+            type: number
+            minimum: 0
+            maximum: 5000000
+            example: 65040
+        - name: income
+          in: query
+          required: true
+          description: Yearly income in today's dollars.
+          schema:
+            type: number
+            minimum: 0
+            maximum: 5000000
+            example: 85900
+        - name: eq_w
+          in: query
+          required: false
+          description: >
+            Equity share, the part of the savings held in stocks, as a
+            fraction between 0 and 1 (0.6 means 60 percent). More stocks mean
+            more growth and bigger swings. If the user does not say, ask; do
+            not guess.
+          schema:
+            type: number
+            minimum: 0
+            maximum: 1
+            example: 0.6
+        # CONFIRM parameter name and whether the job expects 0-1 or 0-100.
+        - name: age
+          in: query
+          required: false
+          description: The user's current age in years.
+          schema:
+            type: integer
+            minimum: 18
+            maximum: 90
+            example: 30
+        # CONFIRM name
+        - name: sex
+          in: query
+          required: false
+          description: Sex used for life expectancy.
+          schema:
+            type: string
+            enum: [male, female]
+        # CONFIRM name and accepted values
+        - name: annual_saving
+          in: query
+          required: false
+          description: >
+            Yearly amount the user adds to savings before retirement, in
+            today's dollars (monthly saving times 12).
+          schema:
+            type: number
+            minimum: 0
+            maximum: 5000000
+            example: 10992
+        # CONFIRM name
+        - name: wd_age
+          in: query
+          required: false
+          description: >
+            Age at which the user starts spending from savings (retirement
+            age).
+          schema:
+            type: integer
+            minimum: 40
+            maximum: 95
+            example: 75
+        # CONFIRM name
+        - name: health
+          in: query
+          required: false
+          description: >
+            Health compared with the average person. It adjusts how long the
+            user is likely to live.
+          schema:
+            type: string
+            enum: [better, average, worse]
+            default: average
+        # CONFIRM name and accepted values
+      responses:
+        "200":
+          description: >
+            Simulation result. Explain each figure to the user in plain words
+            using the field descriptions below.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  # CONFIRM every field name below against the real JSON
+                  # that the job returns (run it with &_debug=log if needed).
+                  prob_lifetime:
+                    type: number
+                    description: >
+                      Chance money lasts a lifetime. Out of 100 possible
+                      futures, how many times the savings outlive the user.
+                  prob_to_95:
+                    type: number
+                    description: >
+                      Chance money lasts to 95. The same, but as if the user
+                      lived to 95. A stricter test.
+                  median_savings:
+                    type: array
+                    description: >
+                      Median savings by age. The typical path: half of the
+                      futures end above this line, half below.
+                    items:
+                      type: number
+                  band_low:
+                    type: array
+                    description: >
+                      Lower edge of the shaded band (10th percentile) by age.
+                    items:
+                      type: number
+                  band_high:
+                    type: array
+                    description: >
+                      Upper edge of the shaded band (90th percentile) by age.
+                      The band shows where savings land in most futures. A
+                      wider band means more uncertainty.
+                    items:
+                      type: number
+                  earliest_age_90:
+                    type: number
+                    description: >
+                      Earliest age for 90 percent. The first retirement age at
+                      which at least 90 futures out of 100 work.
+                  age_10pct_run_out:
+                    type: number
+                    description: >
+                      Age at which 10 percent of futures run out. By this age,
+                      1 future in 10 has used up all the savings.
+                  levers:
+                    type: array
+                    description: >
+                      Lever (+ points). For each single change, how many extra
+                      futures out of 100 work if the user makes only that
+                      change.
+                    items:
+                      type: object
+                      additionalProperties: true
+        "400":
+          description: An input is missing or outside its allowed range.
+        "401":
+          description: Missing or expired token
+        "403":
+          description: Token valid but no permission on the job or folder
+        "404":
+          description: Job path not found
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
