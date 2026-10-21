@@ -1,20 +1,16 @@
-# FutureProof v3 spec. Same server and same bearerAuth as v2, so the
-# Authentication tab in Retrieval Agent Manager does NOT change.
-#
-# Lines starting with "# CONFIRM" must be checked by Mariangela against the
-# SAS job's macro variable names before go-live. Only w0, wd_amount, income
-# and eq_w are confirmed from earlier messages. Comments are never sent to
-# SAS or read by the agent.
+# FutureProof v3.1 spec. Parameter and result names below were confirmed by
+# calling the real job (/Public/Mariangela/FPMC_agenticAI_job) and reading the
+# JSON it returned. Same server and same bearerAuth as before, so the
+# Authentication tab does NOT change.
 openapi: 3.0.3
 info:
   title: FutureProof Retirement Simulator
-  version: 3.0.0
+  version: 3.1.0
   description: >
-    Runs the FutureProof Monte Carlo retirement simulation (SAS Job Execution).
-    Simulates 100 possible futures for the user and reports how often the
-    savings last, how the savings evolve (typical path and shaded band), the
-    earliest retirement age that reaches 90 percent, and which single change
-    helps the most. All money amounts are in today's dollars.
+    Runs the FutureProof Monte Carlo retirement simulation (SAS Job Execution)
+    and returns the chance that the savings last, the expected age at death and
+    the savings at retirement. All money amounts are in today's dollars. The
+    run takes about 15 seconds.
 servers:
   - url: https://viya-3tzzrqm1rj.engage.sas.com
 paths:
@@ -31,8 +27,10 @@ paths:
         for any missing required input before calling, one question at a time.
         Convert monthly amounts to yearly amounts (multiply by 12) and confirm
         the conversion with the user. Express the stock share as a fraction
-        (60 percent is 0.6). To compare scenarios, call the tool once per
-        scenario and change only one input at a time.
+        (60 percent is 0.6). The result probabilities are fractions between 0
+        and 1; show them as percentages (0.985 is 98.5 percent). To compare
+        scenarios, call the tool once per scenario and change only one input
+        at a time. The call takes about 15 seconds; tell the user to wait.
       security:
         - bearerAuth: []
       parameters:
@@ -82,9 +80,39 @@ paths:
             minimum: 0
             maximum: 5000000
             example: 85900
+        - name: start_age
+          in: query
+          required: true
+          description: The user's current age in years.
+          schema:
+            type: integer
+            minimum: 18
+            maximum: 90
+            example: 30
+        - name: sex
+          in: query
+          required: true
+          description: >
+            Sex used for life expectancy. Send exactly M for male or F for
+            female.
+          schema:
+            type: string
+            enum: [M, F]
+            example: M
+        - name: ret_age
+          in: query
+          required: true
+          description: >
+            Age at which the user stops saving and starts spending from
+            savings (retirement age).
+          schema:
+            type: integer
+            minimum: 40
+            maximum: 95
+            example: 75
         - name: eq_w
           in: query
-          required: false
+          required: true
           description: >
             Equity share, the part of the savings held in stocks, as a
             fraction between 0 and 1 (0.6 means 60 percent). More stocks mean
@@ -95,123 +123,87 @@ paths:
             minimum: 0
             maximum: 1
             example: 0.6
-        # CONFIRM parameter name and whether the job expects 0-1 or 0-100.
-        - name: age
+        - name: contrib
           in: query
-          required: false
-          description: The user's current age in years.
-          schema:
-            type: integer
-            minimum: 18
-            maximum: 90
-            example: 30
-        # CONFIRM name
-        - name: sex
-          in: query
-          required: false
-          description: Sex used for life expectancy.
-          schema:
-            type: string
-            enum: [male, female]
-        # CONFIRM name and accepted values
-        - name: annual_saving
-          in: query
-          required: false
+          required: true
           description: >
-            Yearly amount the user adds to savings before retirement, in
-            today's dollars (monthly saving times 12).
+            Share of yearly income the user saves before retirement, as a
+            fraction between 0 and 1. Compute it as yearly saving divided by
+            income (for example 10992 saved on an income of 85900 is 0.128)
+            and confirm it with the user. Use 0 if the user saves nothing.
           schema:
             type: number
             minimum: 0
-            maximum: 5000000
-            example: 10992
-        # CONFIRM name
-        - name: wd_age
-          in: query
-          required: false
-          description: >
-            Age at which the user starts spending from savings (retirement
-            age).
-          schema:
-            type: integer
-            minimum: 40
-            maximum: 95
-            example: 75
-        # CONFIRM name
+            maximum: 1
+            example: 0.1
         - name: health
           in: query
           required: false
           description: >
             Health compared with the average person. It adjusts how long the
-            user is likely to live.
+            user is likely to live. Defaults to average.
           schema:
             type: string
             enum: [better, average, worse]
             default: average
-        # CONFIRM name and accepted values
       responses:
         "200":
           description: >
-            Simulation result. Explain each figure to the user in plain words
-            using the field descriptions below.
+            Simulation result. The inputs block repeats what the job actually
+            used; check it against what the user said. Explain each figure in
+            plain words. Report only fields that are present.
           content:
             application/json:
               schema:
                 type: object
                 additionalProperties: true
                 properties:
-                  # CONFIRM every field name below against the real JSON
-                  # that the job returns (run it with &_debug=log if needed).
-                  prob_lifetime:
-                    type: number
-                    description: >
-                      Chance money lasts a lifetime. Out of 100 possible
-                      futures, how many times the savings outlive the user.
-                  prob_to_95:
-                    type: number
-                    description: >
-                      Chance money lasts to 95. The same, but as if the user
-                      lived to 95. A stricter test.
-                  median_savings:
-                    type: array
-                    description: >
-                      Median savings by age. The typical path: half of the
-                      futures end above this line, half below.
-                    items:
-                      type: number
-                  band_low:
-                    type: array
-                    description: >
-                      Lower edge of the shaded band (10th percentile) by age.
-                    items:
-                      type: number
-                  band_high:
-                    type: array
-                    description: >
-                      Upper edge of the shaded band (90th percentile) by age.
-                      The band shows where savings land in most futures. A
-                      wider band means more uncertainty.
-                    items:
-                      type: number
-                  earliest_age_90:
-                    type: number
-                    description: >
-                      Earliest age for 90 percent. The first retirement age at
-                      which at least 90 futures out of 100 work.
-                  age_10pct_run_out:
-                    type: number
-                    description: >
-                      Age at which 10 percent of futures run out. By this age,
-                      1 future in 10 has used up all the savings.
-                  levers:
-                    type: array
-                    description: >
-                      Lever (+ points). For each single change, how many extra
-                      futures out of 100 work if the user makes only that
-                      change.
-                    items:
-                      type: object
-                      additionalProperties: true
+                  status:
+                    type: string
+                    description: The text ok when the run succeeded.
+                  inputs:
+                    type: object
+                    additionalProperties: true
+                    description: The inputs the job used, including defaults.
+                  results:
+                    type: object
+                    additionalProperties: true
+                    properties:
+                      p_success_lifetime:
+                        type: number
+                        description: >
+                          Chance money lasts a lifetime, as a fraction
+                          (0.985 is 98.5 percent). Out of 100 possible
+                          futures, how many times the savings outlive the
+                          user.
+                      p_success_to_95:
+                        type: number
+                        description: >
+                          Chance money lasts to 95, as a fraction. The same,
+                          but as if the user lived to 95. A stricter test.
+                      expected_age_at_death:
+                        type: number
+                        description: Expected age at death, in years.
+                      wealth_at_retirement_p10:
+                        type: number
+                        description: >
+                          Savings at retirement in a poor case (the 10th
+                          percentile), in today's dollars.
+                      wealth_at_retirement_median:
+                        type: number
+                        description: >
+                          Typical savings at retirement: half of the futures
+                          end above this, half below, in today's dollars.
+                      wealth_at_retirement_p90:
+                        type: number
+                        description: >
+                          Savings at retirement in a good case (the 90th
+                          percentile), in today's dollars.
+                      spending_rate_vs_median_wealth:
+                        type: number
+                        description: >
+                          Yearly spending as a fraction of the typical
+                          savings at retirement (0.04 is 4 percent).
         "400":
           description: An input is missing or outside its allowed range.
         "401":
