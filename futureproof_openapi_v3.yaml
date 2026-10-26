@@ -1,11 +1,12 @@
-# FutureProof v3.1 spec. Parameter and result names below were confirmed by
-# calling the real job (/Public/Mariangela/FPMC_agenticAI_job) and reading the
-# JSON it returned. Same server and same bearerAuth as before, so the
-# Authentication tab does NOT change.
+# FutureProof v3.2 spec. Same server and bearerAuth as v3.1 (Authentication tab
+# does NOT change). Changes: sex is M or F only; the "one question at a time"
+# instruction is replaced by "ask all missing items in one message"; income can
+# no longer be assumed to be 0; eq_w and income must come from the user;
+# contrib must be confirmed; added a check that the returned inputs match.
 openapi: 3.0.3
 info:
   title: FutureProof Retirement Simulator
-  version: 3.1.0
+  version: 3.2.0
   description: >
     Runs the FutureProof Monte Carlo retirement simulation (SAS Job Execution)
     and returns the chance that the savings last, the expected age at death and
@@ -23,14 +24,22 @@ paths:
         will last, how likely they are to run out of money, what happens if
         they spend more or less, retire earlier or later, save more, or hold
         more or fewer stocks. Never estimate a probability yourself: always
-        call this tool and report only the numbers it returns. Ask the user
-        for any missing required input before calling, one question at a time.
-        Convert monthly amounts to yearly amounts (multiply by 12) and confirm
-        the conversion with the user. Express the stock share as a fraction
-        (60 percent is 0.6). The result probabilities are fractions between 0
-        and 1; show them as percentages (0.985 is 98.5 percent). To compare
-        scenarios, call the tool once per scenario and change only one input
-        at a time. The call takes about 15 seconds; tell the user to wait.
+        call this tool and report only the numbers it returns.
+        Before calling, ask for ALL missing required inputs together in one
+        message, not one at a time. Never invent or assume income or the stock
+        share: both must come from the user, because the saving share (contrib)
+        is calculated from income and the stock share changes the result a lot.
+        Only age, savings, spending and saving may be set to 0, and only with
+        the user's agreement. Convert monthly amounts to yearly amounts
+        (multiply by 12) and confirm the conversion with the user. Express the
+        stock share as a fraction (60 percent is 0.6). Compute contrib as
+        yearly saving divided by yearly income and confirm it with the user.
+        The result probabilities are fractions between 0 and 1; show them as
+        percentages (0.902 is 90.2 percent). After the call, compare the
+        inputs block with what the user confirmed; if any value differs, tell
+        the user and do not present the result as final. To compare scenarios,
+        call the tool once per scenario and change only one input at a time.
+        The call takes about 15 seconds; tell the user to wait.
       security:
         - bearerAuth: []
       parameters:
@@ -74,7 +83,11 @@ paths:
         - name: income
           in: query
           required: true
-          description: Yearly income in today's dollars.
+          description: >
+            Yearly income in today's dollars (monthly income times 12). Must
+            come from the user. Never send 0 for a user who saves money,
+            because contrib is a share of income and a 0 income makes the
+            saving disappear from the run.
           schema:
             type: number
             minimum: 0
@@ -94,7 +107,7 @@ paths:
           required: true
           description: >
             Sex used for life expectancy. Send exactly M for male or F for
-            female.
+            female. No other value is accepted.
           schema:
             type: string
             enum: [M, F]
@@ -116,8 +129,8 @@ paths:
           description: >
             Equity share, the part of the savings held in stocks, as a
             fraction between 0 and 1 (0.6 means 60 percent). More stocks mean
-            more growth and bigger swings. If the user does not say, ask; do
-            not guess.
+            more growth and bigger swings. The user must give or approve this
+            value; do not guess and do not default it to 0.
           schema:
             type: number
             minimum: 0
@@ -129,13 +142,15 @@ paths:
           description: >
             Share of yearly income the user saves before retirement, as a
             fraction between 0 and 1. Compute it as yearly saving divided by
-            income (for example 10992 saved on an income of 85900 is 0.128)
-            and confirm it with the user. Use 0 if the user saves nothing.
+            yearly income (for example 12360 saved on an income of 85900 is
+            0.144) and confirm it with the user. Use 0 only if the user saves
+            nothing. Never send 0 because income is unknown; ask for income
+            instead.
           schema:
             type: number
             minimum: 0
             maximum: 1
-            example: 0.1
+            example: 0.144
         - name: health
           in: query
           required: false
@@ -150,8 +165,9 @@ paths:
         "200":
           description: >
             Simulation result. The inputs block repeats what the job actually
-            used; check it against what the user said. Explain each figure in
-            plain words. Report only fields that are present.
+            used; check it against what the user confirmed. Explain each figure
+            in plain words. Report only fields that are present; never add
+            fields that are not in the response.
           content:
             application/json:
               schema:
@@ -173,7 +189,7 @@ paths:
                         type: number
                         description: >
                           Chance money lasts a lifetime, as a fraction
-                          (0.985 is 98.5 percent). Out of 100 possible
+                          (0.902 is 90.2 percent). Out of 100 possible
                           futures, how many times the savings outlive the
                           user.
                       p_success_to_95:
