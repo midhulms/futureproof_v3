@@ -1,4 +1,7 @@
-# FutureProof v4.0 spec for SAS job v3 (/Public/Mariangela/FPMC_agenticAI_job).
+# FutureProof v4.1 spec for SAS job v3.1 (/Public/Mariangela/FPMC_agenticAI_job).
+# v4.1: sex now accepts M, F or O (the job already supports O); response now
+# lists the job's assumptions and disclaimer. Input ranges checked against the
+# job code.
 # Same server and same bearerAuth: the Authentication tab does NOT change.
 # Design: 5 core inputs + monthly spending/saving go straight to the job
 # (the job multiplies by 12). Every optional input is OMITTED when the user
@@ -7,7 +10,7 @@
 openapi: 3.0.3
 info:
   title: FutureProof Retirement Simulator
-  version: 4.0.0
+  version: 4.1.0
   description: >
     Runs the FutureProof Monte Carlo retirement simulation (SAS Job Execution).
     All money amounts are in today's dollars. The run takes about 15 seconds.
@@ -24,9 +27,9 @@ paths:
         spend more or less, save more, hold more or fewer stocks, different
         health). Never estimate a probability yourself.
         INPUT RULES.
-        (1) The seven required inputs (w0, spend_month, start_age, sex,
-        ret_age, plus the fixed _program and _output_type) must come from the
-        user's own words. If one is missing, do not call the tool; ask.
+        (1) The five required user inputs (start_age, sex, w0, spend_month,
+        ret_age) must come from the user's own words; _program and
+        _output_type are fixed. If one is missing, do not call the tool; ask.
         (2) w0, spend_month, contrib_month and pension_month are plain dollar
         amounts. spend_month, contrib_month and pension_month are MONTHLY:
         send the number the user gave, do not multiply by 12 (the job does
@@ -76,10 +79,14 @@ paths:
         - name: sex
           in: query
           required: true
-          description: Exactly M or F, for life expectancy. Must be stated by the user.
+          description: >
+            Exactly M, F or O, used only for life expectancy. M is male, F is
+            female, O is other or prefer not to say (the job then uses the
+            female life table, longer lives, the prudent choice). Must be
+            stated by the user. Never choose for the user.
           schema:
             type: string
-            enum: [M, F]
+            enum: [M, F, O]
         - name: w0
           in: query
           required: true
@@ -197,6 +204,9 @@ paths:
                   message:
                     type: string
                     description: Error text when status is error.
+                  version:
+                    type: string
+                    description: Job version. Do not show to the user.
                   inputs:
                     type: object
                     additionalProperties: true
@@ -205,6 +215,8 @@ paths:
                       w0, wd_amount (yearly spending), spend_month, ret_age,
                       eq_w, saving_per_year, saving_per_month, contrib_growth,
                       growth_years, health, mort_adj, ss_income, ss_age.
+                      Also income, contrib, nsim and the shock settings; ignore
+                      those. If the user gave no saving, saving_per_month is 0.
                   results:
                     type: object
                     additionalProperties: true
@@ -256,6 +268,12 @@ paths:
                           then). null means fewer than 1 in 10 futures ever
                           run out. Never call this the age of death or the
                           age the plan fails for the user.
+                      share_paths_forced_retirement:
+                        type: number
+                        description: Internal figure. Do not report unless asked.
+                      share_paths_ltc_event:
+                        type: number
+                        description: Internal figure. Do not report unless asked.
                       earliest_ret_age_for_target:
                         type: number
                         nullable: true
@@ -289,6 +307,18 @@ paths:
                         change_pp:
                           type: number
                           description: Change in points versus the user's plan.
+                  assumptions:
+                    type: array
+                    description: >
+                      The job's own assumption list. Summarise in plain words
+                      under What I assumed; do not copy technical wording.
+                    items:
+                      type: string
+                  disclaimer:
+                    type: string
+                    description: >
+                      The job's disclaimer. Repeat it word for word at the end
+                      of every answer.
                   retirement_age_scan:
                     type: array
                     description: Chance money lasts for retirement ages 60 to 70.
